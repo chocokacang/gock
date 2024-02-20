@@ -12,7 +12,7 @@ var _ Route = (*Router)(nil)
 
 type RouteGroup interface {
 	Route
-	Group() Route
+	Group() *Router
 }
 
 type Route interface {
@@ -21,6 +21,16 @@ type Route interface {
 
 type Router struct {
 	srv *Server
+}
+
+func (r *Router) Group(path string, handlers ...Handler) *Router {
+	return &Router{
+		srv: r.srv,
+	}
+}
+
+func (r *Router) Use(handlers ...Handler) Route {
+	return r
 }
 
 func (r *Router) Get(path string, handlers ...Handler) {

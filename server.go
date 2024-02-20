@@ -80,6 +80,14 @@ func (srv *Server) Route(method, path string, handlers ...Handler) {
 	}
 
 	root.addRoute(path, handlers)
+
+	if paramsCount := countParams(path); paramsCount > srv.maxParams {
+		srv.maxParams = paramsCount
+	}
+
+	if sectionsCount := countSections(path); sectionsCount > srv.maxSections {
+		srv.maxSections = sectionsCount
+	}
 }
 
 func (srv *Server) Handler() http.Handler {
@@ -95,6 +103,18 @@ func (srv *Server) ServeHTTP(rsw http.ResponseWriter, rq *http.Request) {
 	gock := srv.pool.Get().(*ChocoKacang)
 	gock.writer.set(srv, rsw)
 	gock.set(rq)
+
+	method := gock.Request.Method
+	path := gock.Request.URL.Path
+	unescape := false
+	if root := srv.trees[method]; root != nil {
+		value := root.getValue(path, gock.params, gock.idleNodes, unescape)
+		if value.params != nil {
+			gock.Params = *value.params
+		}
+	}
+
+	srv.pool.Put(gock)
 }
 
 func (srv *Server) Run() {
