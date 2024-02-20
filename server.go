@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/chocokacang/gock/dotenv"
 	"github.com/chocokacang/gock/log"
 	"github.com/chocokacang/gock/utils"
 	"golang.org/x/net/http2"
@@ -15,12 +16,18 @@ var _ Route = (*Server)(nil)
 
 type Server struct {
 	Router
-	Config *Config
-	Logger *log.Logger
-	pool   sync.Pool
+	Config      *Config
+	Logger      *log.Logger
+	trees       trees
+	maxParams   uint16
+	maxSections uint16
+	pool        sync.Pool
 }
 
 func New() *Server {
+
+	dotenv.Load()
+
 	srv := &Server{}
 	srv.Config = &Config{
 		APPENV:   os.Getenv("APP_ENV"),
@@ -36,17 +43,50 @@ func New() *Server {
 		LOGFILE:  os.Getenv("LOG_FILE"),
 	}
 	srv.Logger = log.New("", log.LstdFlags, false, srv.Config.LOGFILE, log.ConvertLevelString(srv.Config.LOGLEVEL))
-	srv.Router = Router{}
-	srv.pool.New = func() any {
-		return &ChocoKacang{srv: srv}
+	srv.Router = Router{
+		srv: srv,
 	}
+	srv.pool.New = func() any {
+		params := make(Params, 0, srv.maxParams)
+		return &ChocoKacang{params: &params, srv: srv}
+	}
+
+	srv.Logger.Debug(log.INFO, "Debug mode is enabled")
+
 	return srv
+}
+
+func (srv *Server) Route(method, path string, handlers ...Handler) {
+	if method == "" {
+		srv.Logger.Panic("HTTP method can not be empty")
+	}
+	if len(path) < 1 || path[0] != '/' {
+		srv.Logger.Panic("Route path must begin with \"/\"")
+	}
+	if len(handlers) < 1 {
+		srv.Logger.Panic("Route must have at lease one")
+	}
+
+	srv.Logger.Debug(log.INFO, "Add Route: %s \"%s\" (%s handlers)", method, path, utils.GetFunctionName(handlers[len(handlers)-1]))
+
+	if srv.trees == nil {
+		srv.trees = make(trees)
+	}
+
+	root := srv.trees[method]
+	if root == nil {
+		root = new(node)
+		srv.trees[method] = root
+	}
+
+	root.addRoute(path, handlers)
 }
 
 func (srv *Server) Handler() http.Handler {
 	if !srv.Config.HTTPH2C {
 		return srv
 	}
+	srv.Logger.Debug(log.INFO, "H2C is enabled")
 	h2s := &http2.Server{}
 	return h2c.NewHandler(srv, h2s)
 }
@@ -55,14 +95,10 @@ func (srv *Server) ServeHTTP(rsw http.ResponseWriter, rq *http.Request) {
 	gock := srv.pool.Get().(*ChocoKacang)
 	gock.writer.set(srv, rsw)
 	gock.set(rq)
-
-	gock.Response.WriteHeader(200)
-	gock.Response.WriteHeader(404)
-	rsw.Write([]byte("X"))
 }
 
 func (srv *Server) Run() {
-	srv.Logger.Info("Run server in port :%s", srv.Config.HTTPPORT)
+	srv.Logger.Info("Listening and serverin HTTP on port %s", srv.Config.HTTPPORT)
 
 	server := &http.Server{
 		Addr:     ":" + srv.Config.HTTPPORT,
@@ -71,6 +107,6 @@ func (srv *Server) Run() {
 	}
 	err := server.ListenAndServe()
 	if err != nil {
-		panic(err)
+		srv.Logger.Panic("%v", err)
 	}
 }

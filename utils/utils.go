@@ -2,6 +2,8 @@ package utils
 
 import (
 	"os"
+	"reflect"
+	"runtime"
 	"strings"
 )
 
@@ -23,4 +25,8 @@ func GetEnvBool(key string, d bool) bool {
 	}
 
 	return false
+}
+
+func GetFunctionName(f any) string {
+	return runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 }

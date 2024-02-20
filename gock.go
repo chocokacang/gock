@@ -2,19 +2,19 @@ package gock
 
 import (
 	"net/http"
-
-	"github.com/chocokacang/gock/dotenv"
 )
+
+type Handler func(gock *ChocoKacang)
+
+type Handlers []Handler
 
 type ChocoKacang struct {
 	Request  *http.Request
 	Response Response
+	Params   Params
+	params   *Params
 	writer   writer
 	srv      *Server
-}
-
-func init() {
-	dotenv.Load()
 }
 
 func (gock *ChocoKacang) set(rq *http.Request) {

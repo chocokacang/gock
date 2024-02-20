@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -120,7 +121,7 @@ func (lgr *Logger) print(level Level, isDebug bool, format string, v ...any) {
 	} else if !lgr.save {
 		lgr.root.SetOutput(os.Stdout)
 	}
-	lgr.root.Printf(format, v...)
+	lgr.root.Output(3, fmt.Sprintf(format, v...))
 }
 
 func (lgr *Logger) Info(format string, v ...any) {
@@ -133,6 +134,12 @@ func (lgr *Logger) Warning(format string, v ...any) {
 
 func (lgr *Logger) Error(format string, v ...any) {
 	lgr.print(ERROR, false, format, v...)
+}
+
+func (lgr *Logger) Panic(format string, v ...any) {
+	s := fmt.Sprintf(format, v...)
+	lgr.print(ERROR, false, s)
+	panic(s)
 }
 
 func (lgr *Logger) Debug(level Level, format string, v ...any) {
