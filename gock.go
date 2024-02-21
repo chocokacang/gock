@@ -16,19 +16,45 @@ type ChocoKacang struct {
 	Params    Params
 	params    *Params
 	writer    writer
-	idleNodes *[]idleNode
+	handlers  Handlers
+	index     int8
 	srv       *Server
+	idleNodes *[]idleNode
+	fullPath  string
 }
 
 func (gock *ChocoKacang) set(rq *http.Request) {
 	gock.Writer = &gock.writer
 	gock.Request = rq
+	gock.index = -1
+
+	*gock.params = (*gock.params)[:0]
+	*gock.idleNodes = (*gock.idleNodes)[:0]
 }
 
-func (gock *ChocoKacang) Response(code int, r render.Render) Response {
-	return gock.writer.Render(code, r)
+func (gock *ChocoKacang) Next() {
+	gock.index++
+	for gock.index < int8(len(gock.handlers)) {
+		if gock.Writer.Written() {
+			return
+		}
+		gock.handlers[gock.index](gock).Next()
+	}
+	gock.writer.RenderHeader()
+}
+
+func (gock *ChocoKacang) Render(code int, r render.Render) Response {
+	gock.Writer.WriteHeader(code)
+
+	err := r.Render(gock.Writer)
+	if err != nil {
+		gock.srv.Logger.Error("%v", err)
+	}
+
+	gock.writer.RenderHeader()
+	return gock
 }
 
 func (gock *ChocoKacang) Text(code int, format string, v ...any) Response {
-	return gock.Response(code, render.Text{Format: format, Data: v})
+	return gock.Render(code, render.Text{Format: format, Data: v})
 }

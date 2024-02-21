@@ -8,10 +8,10 @@ import (
 type Text struct {
 	Format string
 	Data   []any
-	writer http.ResponseWriter
 }
 
-func (r Text) Serve() (err error) {
-	_, err = fmt.Fprintf(r.writer, "x %s", "x")
+func (r Text) Render(w http.ResponseWriter) (err error) {
+	writeContentType(w, textplain)
+	_, err = fmt.Fprintf(w, r.Format, r.Data...)
 	return
 }

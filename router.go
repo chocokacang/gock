@@ -1,6 +1,10 @@
 package gock
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/chocokacang/gock/utils"
+)
 
 var anyMethod = []string{
 	http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch,
@@ -20,12 +24,32 @@ type Route interface {
 }
 
 type Router struct {
-	srv *Server
+	basePath string
+	handlers Handlers
+	srv      *Server
+}
+
+func (r *Router) route(method string, path string, handlers ...Handler) {
+	finalPath := utils.JointPath(r.basePath, path)
+	finalHandlers := r.combineHandlers(handlers)
+	r.srv.Route(method, finalPath, finalHandlers...)
+}
+
+func (r *Router) combineHandlers(handlers Handlers) Handlers {
+	oldSize := len(r.handlers)
+	newSize := len(handlers)
+	finalSize := oldSize + newSize
+	finalHandlers := make(Handlers, finalSize)
+	copy(finalHandlers, r.handlers)
+	copy(finalHandlers[oldSize:], handlers)
+	return finalHandlers
 }
 
 func (r *Router) Group(path string, handlers ...Handler) *Router {
 	return &Router{
-		srv: r.srv,
+		basePath: path,
+		handlers: handlers,
+		srv:      r.srv,
 	}
 }
 
@@ -34,7 +58,7 @@ func (r *Router) Use(handlers ...Handler) Route {
 }
 
 func (r *Router) Get(path string, handlers ...Handler) {
-	r.srv.Route(http.MethodGet, path, handlers...)
+	r.route(http.MethodGet, path, handlers...)
 }
 
 func (r *Router) Post(path string, handlers ...Handler) {

@@ -42,16 +42,20 @@ func New() *Server {
 		LOGLEVEL: utils.GetEnv("LOG_LEVEL", "WARNING"),
 		LOGFILE:  os.Getenv("LOG_FILE"),
 	}
+	if srv.Config.APPDEBUG {
+		srv.Config.LOGLEVEL = "INFO"
+	}
 	srv.Logger = log.New("", log.LstdFlags, false, srv.Config.LOGFILE, log.ConvertLevelString(srv.Config.LOGLEVEL))
 	srv.Router = Router{
 		srv: srv,
 	}
 	srv.pool.New = func() any {
 		params := make(Params, 0, srv.maxParams)
-		return &ChocoKacang{params: &params, srv: srv}
+		idleNodes := make([]idleNode, 0, srv.maxSections)
+		return &ChocoKacang{params: &params, srv: srv, idleNodes: &idleNodes}
 	}
 
-	srv.Logger.Debug(log.INFO, "Debug mode is enabled")
+	srv.Logger.Debug(log.INFO, "Debug mode is enabled. The log level automatically set to INFO level.")
 
 	return srv
 }
@@ -76,6 +80,7 @@ func (srv *Server) Route(method, path string, handlers ...Handler) {
 	root := srv.trees[method]
 	if root == nil {
 		root = new(node)
+		root.fullPath = "/"
 		srv.trees[method] = root
 	}
 
@@ -90,6 +95,10 @@ func (srv *Server) Route(method, path string, handlers ...Handler) {
 	}
 }
 
+func (srv *Server) Database() {
+
+}
+
 func (srv *Server) Handler() http.Handler {
 	if !srv.Config.HTTPH2C {
 		return srv
@@ -99,31 +108,42 @@ func (srv *Server) Handler() http.Handler {
 	return h2c.NewHandler(srv, h2s)
 }
 
-func (srv *Server) ServeHTTP(rsw http.ResponseWriter, rq *http.Request) {
-	gock := srv.pool.Get().(*ChocoKacang)
-	gock.writer.set(srv, rsw)
-	gock.set(rq)
-
+func (srv *Server) handle(gock *ChocoKacang) {
 	method := gock.Request.Method
 	path := gock.Request.URL.Path
-	unescape := false
+	unescape := true
 	if root := srv.trees[method]; root != nil {
 		value := root.getValue(path, gock.params, gock.idleNodes, unescape)
 		if value.params != nil {
 			gock.Params = *value.params
 		}
+		if value.handlers != nil {
+			gock.handlers = value.handlers
+			gock.fullPath = value.fullPath
+			gock.Next()
+			srv.Logger.Info("%s %s %s %d", method, path, gock.Request.Proto, gock.Writer.Status())
+			return
+		}
 	}
+}
+
+func (srv *Server) ServeHTTP(rsw http.ResponseWriter, rq *http.Request) {
+	gock := srv.pool.Get().(*ChocoKacang)
+	gock.writer.set(srv, rsw)
+	gock.set(rq)
+
+	srv.handle(gock)
 
 	srv.pool.Put(gock)
 }
 
 func (srv *Server) Run() {
-	srv.Logger.Info("Listening and serverin HTTP on port %s", srv.Config.HTTPPORT)
+	srv.Logger.Info("Listening and serving HTTP on port %s", srv.Config.HTTPPORT)
 
 	server := &http.Server{
 		Addr:     ":" + srv.Config.HTTPPORT,
 		Handler:  srv.Handler(),
-		ErrorLog: srv.Logger.WithWarningLevel(),
+		ErrorLog: srv.Logger.WithErrorLevel(),
 	}
 	err := server.ListenAndServe()
 	if err != nil {

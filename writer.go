@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/chocokacang/gock/log"
-	"github.com/chocokacang/gock/render"
 )
 
 const unWritten = -1
@@ -13,6 +12,9 @@ var _ Writer = (*writer)(nil)
 
 type Writer interface {
 	http.ResponseWriter
+	Status() int
+	Size() int
+	Written() bool
 }
 
 type writer struct {
@@ -51,13 +53,16 @@ func (w *writer) RenderHeader() {
 }
 
 func (w *writer) Write(data []byte) (n int, err error) {
+	w.RenderHeader()
 	n, err = w.ResponseWriter.Write(data)
 	w.size += n
 	return
 }
 
-func (w *writer) Render(code int, r render.Render) render.Render {
+func (w *writer) Status() int {
+	return w.status
+}
 
-	w.RenderHeader()
-	return r
+func (w *writer) Size() int {
+	return w.size
 }
