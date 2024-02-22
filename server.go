@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/chocokacang/gock/database"
 	"github.com/chocokacang/gock/dotenv"
 	"github.com/chocokacang/gock/log"
 	"github.com/chocokacang/gock/utils"
@@ -16,6 +17,7 @@ var _ Route = (*Server)(nil)
 
 type Server struct {
 	Router
+	DB          *DB
 	Config      *Config
 	Logger      *log.Logger
 	trees       trees
@@ -95,8 +97,9 @@ func (srv *Server) Route(method, path string, handlers ...Handler) {
 	}
 }
 
-func (srv *Server) Database() {
-
+func (srv *Server) Database(dialector database.Dialector, connection func(*DB)) {
+	srv.DB = &DB{srv: srv}
+	connection(srv.DB)
 }
 
 func (srv *Server) Handler() http.Handler {
