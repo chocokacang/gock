@@ -47,6 +47,11 @@ type Logger struct {
 	root      log.Logger
 }
 
+func CreateWriter(file string) (writer *os.File, err error) {
+	writer, err = os.OpenFile(file, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	return
+}
+
 func New(prefix string, flag int, removeTag bool, filePath string, maxLevel Level) *Logger {
 	lgr := &Logger{
 		writer:   os.Stderr,
@@ -58,20 +63,18 @@ func New(prefix string, flag int, removeTag bool, filePath string, maxLevel Leve
 		lgr.removeTag.Store(true)
 	}
 	if filePath != "" {
-		file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+		writer, err := CreateWriter(filePath)
 		if err != nil {
 			lgr.root.Printf("Could not write log to file %s, got error: %v", filePath, err)
 		} else {
-			lgr.writer = file
+			lgr.writer = writer
 			lgr.save = true
-
 		}
 	}
 
 	fullPrefix := lgr.getFullPrefix()
 	lgr.root = *log.New(lgr.writer, fullPrefix, flag)
 
-	// Update default log
 	log.SetPrefix(fullPrefix)
 	log.SetFlags(flag)
 
@@ -147,6 +150,20 @@ func (lgr *Logger) Debug(level Level, format string, v ...any) {
 }
 
 var std = New("", LstdFlags, false, "", WARNING)
+
+func Default(level string, file ...string) *Logger {
+	std.level = ConvertLevelString(level)
+	if len(file) < 1 {
+		writer, err := CreateWriter(file[0])
+		if err != nil {
+			std.root.Printf("Could not write log to file %s, got error: %v", file[0], err)
+		} else {
+			std.writer = writer
+			std.save = true
+		}
+	}
+	return std
+}
 
 func Warning(format string, v ...any) {
 	std.print(WARNING, false, format, v...)

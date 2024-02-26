@@ -2,9 +2,9 @@ package gock
 
 import (
 	"net/http"
-	"os"
 	"sync"
 
+	"github.com/chocokacang/gock/config"
 	"github.com/chocokacang/gock/dotenv"
 	"github.com/chocokacang/gock/log"
 	"github.com/chocokacang/gock/utils"
@@ -14,9 +14,11 @@ import (
 
 var _ Route = (*Server)(nil)
 
+// Server is a framework instance contains configuration, router and logger instance.
+// Create an instance of framework, by New()
 type Server struct {
 	Router
-	Config      *Config
+	Config      config.Config
 	Logger      *log.Logger
 	trees       trees
 	maxParams   uint16
@@ -24,31 +26,23 @@ type Server struct {
 	pool        sync.Pool
 }
 
+// New returns a framework instance without any middleware attached
 func New() *Server {
-
 	dotenv.Load()
 
-	srv := &Server{}
-	srv.Config = &Config{
-		APPENV:   os.Getenv("APP_ENV"),
-		APPNAME:  os.Getenv("APP_NAME"),
-		APPDEBUG: utils.GetEnvBool("APP_DEBUG", true),
-		HTTPPORT: utils.GetEnv("HTTP_PORT", "8080"),
-		HTTPH2C:  utils.GetEnvBool("HTTP_H2C", false),
-		DBHOST:   os.Getenv("DB_HOST"),
-		DBPORT:   os.Getenv("DB_PORT"),
-		DBUSER:   os.Getenv("DB_USER"),
-		DBPASS:   os.Getenv("DB_PASS"),
-		LOGLEVEL: utils.GetEnv("LOG_LEVEL", "WARNING"),
-		LOGFILE:  os.Getenv("LOG_FILE"),
+	config := config.Default()
+	logger := log.Default(config.LogLevel, config.LogFile)
+
+	srv := &Server{
+		Config: config,
+		Logger: logger,
 	}
-	if srv.Config.APPDEBUG {
-		srv.Config.LOGLEVEL = "INFO"
-	}
-	srv.Logger = log.New("", log.LstdFlags, false, srv.Config.LOGFILE, log.ConvertLevelString(srv.Config.LOGLEVEL))
+
 	srv.Router = Router{
-		srv: srv,
+		basePath: "/",
+		srv:      srv,
 	}
+
 	srv.pool.New = func() any {
 		params := make(Params, 0, srv.maxParams)
 		idleNodes := make([]idleNode, 0, srv.maxSections)
@@ -60,6 +54,7 @@ func New() *Server {
 	return srv
 }
 
+// Route register new route path to the framework
 func (srv *Server) Route(method, path string, handlers ...Handler) {
 	if method == "" {
 		srv.Logger.Panic("HTTP method can not be empty")
@@ -95,10 +90,7 @@ func (srv *Server) Route(method, path string, handlers ...Handler) {
 	}
 }
 
-func (srv *Server) Database() {
-
-}
-
+// Handler returns http.Handler
 func (srv *Server) Handler() http.Handler {
 	if !srv.Config.HTTPH2C {
 		return srv
@@ -127,6 +119,7 @@ func (srv *Server) handle(gock *ChocoKacang) {
 	}
 }
 
+// ServeHTTP use for handle HTTP request from the clients
 func (srv *Server) ServeHTTP(rsw http.ResponseWriter, rq *http.Request) {
 	gock := srv.pool.Get().(*ChocoKacang)
 	gock.writer.set(srv, rsw)
@@ -137,11 +130,12 @@ func (srv *Server) ServeHTTP(rsw http.ResponseWriter, rq *http.Request) {
 	srv.pool.Put(gock)
 }
 
+// Run web server framework
 func (srv *Server) Run() {
-	srv.Logger.Info("Listening and serving HTTP on port %s", srv.Config.HTTPPORT)
+	srv.Logger.Info("Listening and serving HTTP on port %s", srv.Config.HTTPPort)
 
 	server := &http.Server{
-		Addr:     ":" + srv.Config.HTTPPORT,
+		Addr:     ":" + srv.Config.HTTPPort,
 		Handler:  srv.Handler(),
 		ErrorLog: srv.Logger.WithErrorLevel(),
 	}
