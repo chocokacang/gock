@@ -44,12 +44,7 @@ type Logger struct {
 	level     Level
 	maxLevel  Level
 	removeTag atomic.Bool
-	root      log.Logger
-}
-
-func CreateWriter(file string) (writer *os.File, err error) {
-	writer, err = os.OpenFile(file, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-	return
+	root      *log.Logger
 }
 
 func New(prefix string, flag int, removeTag bool, filePath string, maxLevel Level) *Logger {
@@ -62,26 +57,20 @@ func New(prefix string, flag int, removeTag bool, filePath string, maxLevel Leve
 	if removeTag {
 		lgr.removeTag.Store(true)
 	}
-	if filePath != "" {
-		writer, err := CreateWriter(filePath)
-		if err != nil {
-			lgr.root.Printf("Could not write log to file %s, got error: %v", filePath, err)
-		} else {
-			lgr.writer = writer
-			lgr.save = true
-		}
-	}
 
-	fullPrefix := lgr.getFullPrefix()
-	lgr.root = *log.New(lgr.writer, fullPrefix, flag)
+	lgr.root = log.Default()
 
-	log.SetPrefix(fullPrefix)
+	log.SetPrefix(lgr.fullPrefix())
 	log.SetFlags(flag)
+
+	if filePath != "" {
+		lgr.SaveTo(filePath)
+	}
 
 	return lgr
 }
 
-func (lgr *Logger) getFullPrefix() string {
+func (lgr *Logger) fullPrefix() string {
 	if lgr.removeTag.Load() {
 		return lgr.prefix
 	}
@@ -90,12 +79,11 @@ func (lgr *Logger) getFullPrefix() string {
 
 func (lgr *Logger) logWithLevel(level Level) *log.Logger {
 	lgr.level = level
-	fullPrefix := lgr.getFullPrefix()
-	lgr.root.SetPrefix(fullPrefix)
+	lgr.root.SetPrefix(lgr.fullPrefix())
 	if lgr.level > lgr.maxLevel {
 		lgr.root.SetOutput(io.Discard)
 	}
-	return &lgr.root
+	return lgr.root
 }
 
 func (lgr *Logger) WithInfoLevel() *log.Logger {
@@ -116,8 +104,7 @@ func (lgr *Logger) print(level Level, isDebug bool, format string, v ...any) {
 	}
 	if lgr.level != level {
 		lgr.level = level
-		fullPrefix := lgr.getFullPrefix()
-		lgr.root.SetPrefix(fullPrefix)
+		lgr.root.SetPrefix(lgr.fullPrefix())
 	}
 	if !lgr.save && lgr.level < INFO {
 		lgr.root.SetOutput(os.Stderr)
@@ -149,18 +136,23 @@ func (lgr *Logger) Debug(level Level, format string, v ...any) {
 	lgr.print(level, true, format, v...)
 }
 
+func (lgr *Logger) SaveTo(file string) {
+	writer, err := os.OpenFile(file, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err != nil {
+		lgr.Panic("Could not save log to file %s, got error: %v", file, err)
+		return
+	}
+	lgr.writer = writer
+	lgr.save = true
+	lgr.root.SetOutput(lgr.writer)
+}
+
 var std = New("", LstdFlags, false, "", WARNING)
 
 func Default(level string, file ...string) *Logger {
 	std.level = ConvertLevelString(level)
 	if len(file) < 1 {
-		writer, err := CreateWriter(file[0])
-		if err != nil {
-			std.root.Printf("Could not write log to file %s, got error: %v", file[0], err)
-		} else {
-			std.writer = writer
-			std.save = true
-		}
+		std.SaveTo(file[0])
 	}
 	return std
 }

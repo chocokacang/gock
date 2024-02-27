@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/chocokacang/gock/config"
+	"github.com/chocokacang/gock/db"
 	"github.com/chocokacang/gock/dotenv"
 	"github.com/chocokacang/gock/log"
 	"github.com/chocokacang/gock/utils"
@@ -24,6 +25,7 @@ type Server struct {
 	maxParams   uint16
 	maxSections uint16
 	pool        sync.Pool
+	db          *db.DB
 }
 
 // New returns a framework instance without any middleware attached
@@ -43,6 +45,10 @@ func New() *Server {
 		srv:      srv,
 	}
 
+	srv.db = &db.DB{
+		Logger: srv.Logger,
+	}
+
 	srv.pool.New = func() any {
 		params := make(Params, 0, srv.maxParams)
 		idleNodes := make([]idleNode, 0, srv.maxSections)
@@ -52,6 +58,10 @@ func New() *Server {
 	srv.Logger.Debug(log.INFO, "Debug mode is enabled. The log level automatically set to INFO level.")
 
 	return srv
+}
+
+func (srv *Server) OpenDB(name, driver, dsn string) {
+	srv.db.Open(name, driver, dsn)
 }
 
 // Route register new route path to the framework

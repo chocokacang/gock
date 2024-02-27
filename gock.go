@@ -3,6 +3,7 @@ package gock
 import (
 	"net/http"
 
+	"github.com/chocokacang/gock/db"
 	"github.com/chocokacang/gock/render"
 )
 
@@ -57,4 +58,13 @@ func (gock *ChocoKacang) Render(code int, r render.Render) Response {
 
 func (gock *ChocoKacang) Text(code int, format string, v ...any) Response {
 	return gock.Render(code, render.Text{Format: format, Data: v})
+}
+
+func (gock *ChocoKacang) SQL(query string) db.Query {
+	return gock.srv.db.Query(query)
+}
+
+func (gock *ChocoKacang) Model(dst interface{}) db.ModelStatement {
+	model := &db.Model{Dst: dst}
+	return model.DB(gock.srv.db)
 }
